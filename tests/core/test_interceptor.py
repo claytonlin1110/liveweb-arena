@@ -1,6 +1,7 @@
 """Tests for CacheInterceptor — URL blocking, domain allowlisting, cache lookup, error management."""
 
 import asyncio
+
 import pytest
 
 from liveweb_arena.core.cache import CachedPage, CacheFatalError, normalize_url
@@ -162,26 +163,25 @@ class TestAccessibilityTreeCache:
         assert len(i.cached_pages) == 0
 
 
-class FakeRequest:
-    def __init__(self, url: str, resource_type: str, headers=None):
+# ── Offline XHR/fetch: must abort, not fulfill (see interceptor module doc) ──
+
+
+class _FakeRequest:
+    def __init__(self, url: str, resource_type: str):
         self.url = url
         self.resource_type = resource_type
-        self.headers = headers or {}
+        self.headers = {}
 
 
-class FakeRoute:
-    def __init__(self, request: FakeRequest):
+class _FakeRoute:
+    def __init__(self, request: _FakeRequest):
         self.request = request
         self.fulfilled = None
         self.aborted = None
         self.continued = False
 
     async def fulfill(self, status=None, headers=None, body=None):
-        self.fulfilled = {
-            "status": status,
-            "headers": headers or {},
-            "body": body,
-        }
+        self.fulfilled = {"status": status, "headers": headers or {}, "body": body}
 
     async def abort(self, reason=None):
         self.aborted = reason
@@ -190,41 +190,29 @@ class FakeRoute:
         self.continued = True
 
 
-def test_offline_xhr_fulfilled_with_json_stub():
-    i = _interceptor(offline=True)
-    route = FakeRoute(
-        FakeRequest(
-            url="https://example.com/api",
-            resource_type="xhr",
-            headers={"accept": "application/json"},
-        )
-    )
-
+def test_offline_xhr_aborts_not_fulfill():
+    """Regression: fake-200 XHR responses can run success parsers and corrupt DOM."""
+    i = _interceptor(offline=True, domains={"example.com"})
+    route = _FakeRoute(_FakeRequest("https://example.com/api", "xhr"))
     asyncio.run(i.handle_route(route))
-
-    assert route.aborted is None
+    assert route.fulfilled is None
+    assert route.aborted == "blockedbyclient"
     assert route.continued is False
-    assert route.fulfilled is not None
-    assert route.fulfilled["status"] == 200
-    assert route.fulfilled["headers"]["content-type"].startswith("application/json")
-    assert route.fulfilled["body"] == "{}"
 
 
-def test_offline_blocked_xhr_fulfilled_instead_of_abort():
-    i = _interceptor(offline=True)
-    # This URL is blocked by the built-in tracking block patterns.
-    route = FakeRoute(
-        FakeRequest(
-            url="https://www.google-analytics.com/collect?v=1",
-            resource_type="xhr",
-            headers={"accept": "application/json"},
-        )
-    )
-
+def test_offline_fetch_aborts_not_fulfill():
+    i = _interceptor(offline=True, domains={"example.com"})
+    route = _FakeRoute(_FakeRequest("https://example.com/data", "fetch"))
     asyncio.run(i.handle_route(route))
+    assert route.fulfilled is None
+    assert route.aborted == "blockedbyclient"
 
-    assert route.aborted is None
-    assert route.continued is False
-    assert route.fulfilled is not None
-    assert route.fulfilled["status"] == 200
-    assert route.fulfilled["body"] == "{}"
+
+def test_blocked_tracking_xhr_aborts():
+    i = _interceptor(offline=True)
+    route = _FakeRoute(
+        _FakeRequest("https://www.google-analytics.com/collect?v=1", "xhr")
+    )
+    asyncio.run(i.handle_route(route))
+    assert route.fulfilled is None
+    assert route.aborted == "blockedbyclient"

@@ -38,14 +38,17 @@ _TRANSPARENT_GIF = (
 # Offline / cache-mode stubs for *static* resource types only.
 #
 # We fulfill empty CSS/JS/images/fonts so the document can paint without hitting
-# the network; external script bundles never load, so most SPAs never reach XHR.
+# the network. External script bundles are stubbed, so framework-driven SPAs
+# often never load their main bundles. That is not universal: inline <script>
+# still runs and may start XHR (e.g. Stooq uses timer-based inline pollers).
+# Those handlers typically guard on readyState==4 && status==200; route.abort()
+# does not satisfy that, so the success path does not run — usually a safe no-op.
 #
 # Do NOT apply the same pattern to xhr/fetch: returning HTTP 200 with an empty or
 # placeholder body often runs the client's *success* path (onreadystatechange /
-# .then after ok). Real sites (e.g. Stooq inline XHR) may then parse bogus data,
-# corrupt the DOM, and break evaluations that fall back to live DOM when the
-# cached accessibility tree is missing. For xhr/fetch in offline mode we use
-# route.abort() so failure handlers stay on the error path (often a no-op).
+# .then after ok). That can parse bogus data, corrupt the DOM, and break
+# evaluations that fall back to live DOM when the cached accessibility tree is
+# missing. For xhr/fetch in offline mode we use route.abort().
 _OFFLINE_STUBS = {
     "stylesheet": ("text/css", ""),
     "script": ("application/javascript", ""),

@@ -216,3 +216,60 @@ def test_blocked_tracking_xhr_aborts():
     asyncio.run(i.handle_route(route))
     assert route.fulfilled is None
     assert route.aborted == "blockedbyclient"
+
+
+# ── Offline static: stylesheet/script/image/font must fulfill (flip side of XHR) ──
+
+
+@pytest.mark.parametrize(
+    "resource_type,expected_content_type",
+    [
+        ("stylesheet", "text/css"),
+        ("script", "application/javascript"),
+        ("image", "image/gif"),
+        ("font", "font/woff2"),
+    ],
+)
+def test_offline_static_resource_types_fulfilled_not_aborted(
+    resource_type, expected_content_type,
+):
+    """Offline mode stubs static assets via fulfill(); only unknown static types abort."""
+    i = _interceptor(offline=True, domains={"example.com"})
+    route = _FakeRoute(
+        _FakeRequest(f"https://example.com/res.{resource_type}", resource_type)
+    )
+    asyncio.run(i.handle_route(route))
+    assert route.aborted is None
+    assert route.continued is False
+    assert route.fulfilled is not None
+    assert route.fulfilled["status"] == 200
+    ct = route.fulfilled["headers"].get("content-type", "")
+    assert ct.startswith(expected_content_type.split(";")[0])
+    if resource_type == "image":
+        assert isinstance(route.fulfilled["body"], bytes)
+        assert route.fulfilled["body"][:3] == b"GIF"
+    elif resource_type == "font":
+        assert route.fulfilled["body"] == b""
+    else:
+        assert route.fulfilled["body"] == ""
+
+
+# ── Non-offline XHR: disallowed domain aborts (offline=False branch of _handle_xhr) ──
+
+
+def test_online_xhr_disallowed_domain_aborts():
+    """_handle_xhr: if self.offline or not self._is_domain_allowed(url) → abort."""
+    i = _interceptor(offline=False, domains={"coingecko.com"})
+    route = _FakeRoute(_FakeRequest("https://evil.com/api", "xhr"))
+    asyncio.run(i.handle_route(route))
+    assert route.fulfilled is None
+    assert route.aborted == "blockedbyclient"
+    assert route.continued is False
+
+
+def test_online_fetch_disallowed_domain_aborts():
+    i = _interceptor(offline=False, domains={"coingecko.com"})
+    route = _FakeRoute(_FakeRequest("https://evil.com/data", "fetch"))
+    asyncio.run(i.handle_route(route))
+    assert route.fulfilled is None
+    assert route.aborted == "blockedbyclient"

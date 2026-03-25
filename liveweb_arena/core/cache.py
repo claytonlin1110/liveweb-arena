@@ -329,7 +329,7 @@ class CacheManager:
         result = {}
 
         for page_req in pages:
-            normalized = plugin.normalize_url(page_req.url)
+            normalized = normalize_url(page_req.url)
             cached = await self._ensure_single(page_req.url, plugin, page_req.need_api)
             result[normalized] = cached
 

@@ -134,6 +134,9 @@ def render_markdown(report: Dict[str, Any]) -> str:
     lines.append("## Notes")
     lines.append("")
     lines.append(
+        "- **Scope**: this dashboard is a quick automated supplement; it does NOT replace CLAUDE.md mandatory red team review or eval.py template testing."
+    )
+    lines.append(
         "- **Collapse**: computed as \\(1 - \\frac{\\#distinct\\_GT}{\\#distinct\\_validation\\_signatures}\\) over successful samples."
     )
     lines.append(

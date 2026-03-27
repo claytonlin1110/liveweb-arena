@@ -59,6 +59,7 @@ logs/
 *.tmp
 *.bak
 *.orig
+redteam/
 
 # uv
 .python-version

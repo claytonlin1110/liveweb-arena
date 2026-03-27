@@ -117,7 +117,12 @@ async def _run_probe_once(
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description="LiveWeb Arena - Template Red Team Dashboard")
+    parser = argparse.ArgumentParser(
+        description=(
+            "LiveWeb Arena - Template Red Team Dashboard "
+            "(supplementary API probe, not a replacement for CLAUDE.md red team review or eval.py)."
+        )
+    )
     parser.add_argument(
         "--templates",
         type=str,

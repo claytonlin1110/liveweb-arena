@@ -375,6 +375,15 @@ class QuestionTemplate(ABC):
         """
         return None
 
+    def get_probe_urls(self, validation_info: Dict[str, Any]) -> List[str]:
+        """
+        Optional red-team probe URL declaration.
+
+        Redteam tooling can call this to get the exact URLs required to populate
+        collected API data for GT checks. Default returns an empty list.
+        """
+        return []
+
     # === Step-wise Reward Interface ===
     # Templates can override these methods to provide reward-relevant information.
 

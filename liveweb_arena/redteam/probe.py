@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 
 from liveweb_arena.core.gt_collector import GTCollector, set_current_gt_collector
 from liveweb_arena.core.task_manager import TaskManager
-from liveweb_arena.core.validators.base import GeneratedQuestion
+from liveweb_arena.core.validators.base import GeneratedQuestion, get_template
 from liveweb_arena.plugins.base import SubTask
 
 
@@ -36,12 +36,24 @@ def _infer_probe_urls(plugin_name: str, question: GeneratedQuestion) -> List[str
     """
     Produce a minimal set of URLs likely sufficient for GT.
 
-    This is intentionally conservative and template-agnostic, with a few plugin
-    heuristics based on common validation_info fields.
+    This is intentionally conservative and template-agnostic.
+    It first uses template-declared probe URLs (if provided), then falls back
+    to compatibility heuristics based on common validation_info fields.
     """
     urls: List[str] = []
     if question.start_url:
         urls.append(question.start_url)
+
+    template_cls = get_template(question.template_name)
+    if template_cls is not None:
+        try:
+            template = template_cls()
+            declared_urls = template.get_probe_urls(question.validation_info or {})
+            if declared_urls:
+                urls.extend(declared_urls)
+        except Exception:
+            # Keep probe resilient; fallback heuristics still apply.
+            pass
 
     vi = question.validation_info or {}
 
@@ -101,9 +113,12 @@ async def probe_task_ground_truth(
 
     Strategy:
     - Create a GTCollector for the subtasks
-    - For each subtask, call its plugin.fetch_api_data() for inferred probe URLs
+    - For each subtask, call plugin.fetch_api_data() for probe URLs
     - Feed that api_data into GTCollector.on_page_visit()
-    - Then call GTCollector.fetch_remaining_api_gt() which invokes template.get_ground_truth()
+    - Call GTCollector.fetch_remaining_api_gt() for template.get_ground_truth()
+
+    NOTE: This is a quick API-level supplement. It does NOT replace full
+    eval.py runs or the mandatory CLAUDE.md red team review process.
     """
     gt_collector = GTCollector(subtasks=list(subtasks), task_manager=task_manager)
     set_current_gt_collector(gt_collector)

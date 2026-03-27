@@ -7,6 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from liveweb_arena.core.cache import CacheManager
 from liveweb_arena.core.task_manager import TaskManager
 from liveweb_arena.plugins import get_all_plugins
 from liveweb_arena.core.validators.base import get_registered_templates
@@ -83,8 +84,18 @@ def _resolve_all_templates(
     return resolved
 
 
+def _resolve_cache_dir(cache_dir_arg: Optional[str]) -> Path:
+    if cache_dir_arg:
+        return Path(cache_dir_arg)
+    env_cache_dir = os.environ.get("LIVEWEB_CACHE_DIR")
+    if env_cache_dir:
+        return Path(env_cache_dir)
+    return Path("/var/lib/liveweb-arena/cache")
+
+
 async def _run_probe_once(
     *,
+    cache_manager: CacheManager,
     templates: List[Tuple[str, str, Optional[int]]],
     seeds: List[int],
 ) -> List[ProbeResult]:
@@ -105,6 +116,7 @@ async def _run_probe_once(
             q = st.question
             results = await probe_task_ground_truth(
                 task_manager=task_manager,
+                cache_manager=cache_manager,
                 subtasks=[st],
                 questions=[q],
                 plugin_names=[plugin],
@@ -120,7 +132,7 @@ async def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "LiveWeb Arena - Template Red Team Dashboard "
-            "(supplementary API probe, not a replacement for CLAUDE.md red team review or eval.py)."
+            "(cache-pipeline GT probe; supplements CLAUDE.md red team review and eval.py, does not replace them)."
         )
     )
     parser.add_argument(
@@ -170,6 +182,12 @@ async def main() -> int:
         type=str,
         default=None,
         help="Directory to write report.{json,md} (default: ./redteam/<timestamp>/)",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help="Page cache directory (default: LIVEWEB_CACHE_DIR or /var/lib/liveweb-arena/cache, same as eval).",
     )
     parser.add_argument(
         "--fail-on-violation",
@@ -229,11 +247,19 @@ async def main() -> int:
         raise ValueError("--repeat must be >= 1")
 
     repeats: List[List[ProbeResult]] = []
-    for i in range(args.repeat):
-        runs = await _run_probe_once(templates=templates, seeds=seeds)
-        repeats.append(runs)
-        if i + 1 < args.repeat and args.repeat_delay_s > 0:
-            await asyncio.sleep(args.repeat_delay_s)
+    cache_manager = CacheManager(_resolve_cache_dir(args.cache_dir))
+    try:
+        for i in range(args.repeat):
+            runs = await _run_probe_once(
+                cache_manager=cache_manager,
+                templates=templates,
+                seeds=seeds,
+            )
+            repeats.append(runs)
+            if i + 1 < args.repeat and args.repeat_delay_s > 0:
+                await asyncio.sleep(args.repeat_delay_s)
+    finally:
+        await cache_manager.shutdown()
 
     samples = repeats[0]
 
@@ -332,6 +358,7 @@ async def main() -> int:
             "seeds": args.seeds,
             "repeat": args.repeat,
             "repeat_delay_s": args.repeat_delay_s,
+            "cache_dir": str(_resolve_cache_dir(args.cache_dir)),
             "fail_on_violation": args.fail_on_violation,
             "min_gt_success": args.min_gt_success,
             "max_collapse": args.max_collapse,

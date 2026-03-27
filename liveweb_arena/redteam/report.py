@@ -64,7 +64,9 @@ def render_markdown(report: Dict[str, Any]) -> str:
     lines.append("## Template Red Team Report")
     lines.append("")
     lines.append(f"- **Generated**: {report['meta']['generated_at']}")
-    lines.append(f"- **Mode**: api-probe (plugin.fetch_api_data → GTCollector)")
+    lines.append(
+        "- **Mode**: cache-pipeline probe (CacheManager.ensure_cached → atomic page snapshot → GTCollector, same binding as eval cache mode)"
+    )
     lines.append("")
     lines.append("## Summary")
     lines.append("")
@@ -135,6 +137,9 @@ def render_markdown(report: Dict[str, Any]) -> str:
     lines.append("")
     lines.append(
         "- **Scope**: this dashboard is a quick automated supplement; it does NOT replace CLAUDE.md mandatory red team review or eval.py template testing."
+    )
+    lines.append(
+        "- **Cache vs agent**: probe uses the same on-disk cache + snapshot semantics as evaluation, but not agent visit order or full trajectories; GT merge order follows the fixed probe URL list."
     )
     lines.append(
         "- **Collapse**: computed as \\(1 - \\frac{\\#distinct\\_GT}{\\#distinct\\_validation\\_signatures}\\) over successful samples."

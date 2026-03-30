@@ -90,6 +90,9 @@ def _resolve_cache_dir(cache_dir_arg: Optional[str]) -> Path:
     env_cache_dir = os.environ.get("LIVEWEB_CACHE_DIR")
     if env_cache_dir:
         return Path(env_cache_dir)
+    # Local dev default on Windows (avoid /var/lib permission errors).
+    if os.name == "nt":
+        return Path.cwd() / "cache"
     return Path("/var/lib/liveweb-arena/cache")
 
 
@@ -105,25 +108,42 @@ async def _run_probe_once(
     for seed in seeds:
         # For deterministic coverage: 1 subtask per template spec.
         for plugin, template_name, variant in templates:
-            task = await task_manager.generate_composite_task(
-                seed=seed,
-                num_subtasks=1,
-                templates=[(plugin, template_name, variant)],
-            )
-            st = task.subtasks[0]
-            if st.question is None:
-                raise RuntimeError("Subtask missing GeneratedQuestion")
-            q = st.question
-            results = await probe_task_ground_truth(
-                task_manager=task_manager,
-                cache_manager=cache_manager,
-                subtasks=[st],
-                questions=[q],
-                plugin_names=[plugin],
-                seed=seed,
-                variant=variant,
-            )
-            all_results.extend(results)
+            try:
+                task = await task_manager.generate_composite_task(
+                    seed=seed,
+                    num_subtasks=1,
+                    templates=[(plugin, template_name, variant)],
+                )
+                st = task.subtasks[0]
+                if st.question is None:
+                    raise RuntimeError("Subtask missing GeneratedQuestion")
+                q = st.question
+                results = await probe_task_ground_truth(
+                    task_manager=task_manager,
+                    cache_manager=cache_manager,
+                    subtasks=[st],
+                    questions=[q],
+                    plugin_names=[plugin],
+                    seed=seed,
+                    variant=variant,
+                )
+                all_results.extend(results)
+            except Exception as e:
+                # Never crash the whole run; record as a probe failure.
+                all_results.append(
+                    ProbeResult(
+                        template_name=template_name,
+                        plugin_name=plugin,
+                        seed=seed,
+                        variant=variant,
+                        question_text="",
+                        validation_info={},
+                        probe_urls=[],
+                        gt_ok=False,
+                        gt_value=None,
+                        gt_error=f"Probe failed: {type(e).__name__}: {e}",
+                    )
+                )
 
     return all_results
 
@@ -260,6 +280,22 @@ async def main() -> int:
                 await asyncio.sleep(args.repeat_delay_s)
     finally:
         await cache_manager.shutdown()
+        # Close any shared aiohttp sessions used by API clients.
+        try:
+            from liveweb_arena.plugins.openmeteo.api_client import OpenMeteoClient
+            await OpenMeteoClient.close_session()
+        except Exception:
+            pass
+        try:
+            from liveweb_arena.plugins.openlibrary import api_client as _ol_api
+            await _ol_api.close_session()
+        except Exception:
+            pass
+        try:
+            from liveweb_arena.plugins.arxiv import api_client as _ax_api
+            await _ax_api.close_session()
+        except Exception:
+            pass
 
     samples = repeats[0]
 

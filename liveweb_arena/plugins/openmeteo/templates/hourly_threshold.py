@@ -29,7 +29,7 @@ from liveweb_arena.core.ground_truth_trigger import (
 )
 from liveweb_arena.core.gt_collector import GTSourceType
 
-from .common import DOCS_HOME_URL, get_collected_location_data, get_today_hourly_series
+from .common import DOCS_HOME_URL, docs_url_from_coord_key, get_collected_location_data, get_today_hourly_series
 from .variables import CITIES, HourlyMetric, HOURLY_THRESHOLDS
 
 # Per-metric jitter half-range applied to each base threshold.
@@ -196,3 +196,9 @@ class OpenMeteoHourlyThresholdTemplate(QuestionTemplate):
 
     def get_gt_source(self) -> GTSourceType:
         return self.GT_SOURCE
+
+    def get_probe_urls(self, validation_info: Dict[str, Any]) -> list[str]:
+        coord_key = validation_info.get("coord_key", "")
+        if isinstance(coord_key, str) and "," in coord_key:
+            return [docs_url_from_coord_key(coord_key)]
+        return []

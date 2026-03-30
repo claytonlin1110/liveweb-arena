@@ -8,6 +8,26 @@ from liveweb_arena.core.gt_collector import get_current_gt_collector
 DOCS_HOME_URL = "https://open-meteo.com/en/docs"
 
 
+def docs_url_from_coord_key(coord_key: str) -> str:
+    """
+    Build an Open-Meteo docs URL for a specific (lat,lon) pair.
+
+    Uses query params for cache key uniqueness and repeats them in the hash
+    fragment for the client-side form state, mirroring City.docs_url().
+    """
+    lat_str, lon_str = (coord_key or "").split(",", 1)
+    lat = float(lat_str)
+    lon = float(lon_str)
+    return (
+        f"{DOCS_HOME_URL}"
+        f"?latitude={lat}&longitude={lon}"
+        f"#latitude={lat}&longitude={lon}"
+        f"&current=temperature_2m,wind_speed_10m,relative_humidity_2m"
+        f"&hourly=temperature_2m,precipitation_probability,wind_speed_10m"
+        f"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset"
+    )
+
+
 def get_collected_location_data(
     coord_key: str,
     city_name: str,

@@ -18,7 +18,6 @@ Directory structure:
 """
 
 import asyncio
-import fcntl
 import json
 import logging
 import os
@@ -38,6 +37,12 @@ logger = logging.getLogger(__name__)
 
 # Default TTL: 48 hours
 DEFAULT_TTL = 72 * 3600  # 3 days
+
+_IS_WINDOWS = os.name == "nt"
+if not _IS_WINDOWS:
+    import fcntl  # type: ignore
+else:
+    import msvcrt  # type: ignore
 
 
 class CacheFatalError(Exception):
@@ -130,26 +135,50 @@ async def async_file_lock_acquire(lock_path: Path, timeout: float = 60.0) -> int
     start = time.time()
 
     while True:
-        fd = open(lock_path, 'w')
+        fd = open(lock_path, "a+b")
         try:
-            # Try non-blocking lock
-            fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Ensure the lock file has at least one byte for Windows locking.
+            try:
+                fd.seek(0, os.SEEK_END)
+                if fd.tell() == 0:
+                    fd.write(b"\0")
+                    fd.flush()
+            except Exception:
+                pass
+
+            if _IS_WINDOWS:
+                msvcrt.locking(fd.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             return fd  # Lock acquired, return file object
-        except BlockingIOError:
-            fd.close()
+        except (BlockingIOError, OSError):
+            try:
+                fd.close()
+            except Exception:
+                pass
             # Lock held by another process, wait and retry
             if time.time() - start > timeout:
                 raise TimeoutError(f"Could not acquire lock {lock_path} within {timeout}s")
             await asyncio.sleep(0.1)  # Yield to event loop
         except Exception:
-            fd.close()
+            try:
+                fd.close()
+            except Exception:
+                pass
             raise
 
 
 def async_file_lock_release(fd):
     """Release file lock acquired by async_file_lock_acquire()."""
     try:
-        fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+        if _IS_WINDOWS:
+            try:
+                fd.seek(0)
+            except Exception:
+                pass
+            msvcrt.locking(fd.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
     finally:
         fd.close()
 

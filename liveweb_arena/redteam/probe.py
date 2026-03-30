@@ -142,6 +142,9 @@ async def probe_task_ground_truth(
             except CacheFatalError as e:
                 prefetch_errors[tag] = f"Cache pipeline failed: {e}"
                 continue
+            except Exception as e:
+                prefetch_errors[tag] = f"Cache pipeline error: {type(e).__name__}: {e}"
+                continue
 
             # Build visit list first so we never partially merge into GT on a missing key.
             visits: List[Tuple[str, str, Any]] = []

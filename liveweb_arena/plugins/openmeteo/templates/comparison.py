@@ -145,3 +145,10 @@ class OpenMeteoComparisonTemplate(QuestionTemplate):
 
     def get_gt_source(self) -> GTSourceType:
         return self.GT_SOURCE
+
+    def get_probe_urls(self, validation_info: Dict[str, Any]) -> list[str]:
+        urls: list[str] = []
+        city2_url = validation_info.get("city2_url")
+        if isinstance(city2_url, str) and city2_url.startswith("https://"):
+            urls.append(city2_url)
+        return urls
